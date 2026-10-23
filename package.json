@@ -1,0 +1,17 @@
+{
+  "name": "azhou-stickers-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.2",
+    "@modelcontextprotocol/ext-apps": "^1.0.1",
+    "zod": "^3.25.76"
+  }
+}
