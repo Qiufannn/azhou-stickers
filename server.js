@@ -28,12 +28,12 @@ function makeServer() {
     labels: z.array(z.string()),
     imageUrl: z.string().url()
   });
-  const outputSchema = { stickers: z.array(stickerSchema) };
+  const outputSchema = z.object({ stickers: z.array(stickerSchema) });
 
   registerAppTool(server, "sticker_search", {
     title: "Search personal stickers",
     description: "Search the user's existing sticker collection by meaning, mood, name, or labels. Use this when a sticker would naturally fit the conversation. Returns original image URLs, not generated images.",
-    inputSchema: { query: z.string().min(1).describe("Meaning, emotion, or situation to match") },
+    inputSchema: z.object({ query: z.string().min(1).describe("Meaning, emotion, or situation to match") }),
     outputSchema,
     _meta: { ui: { resourceUri: RESOURCE_URI } }
   }, async ({ query }) => {
@@ -54,7 +54,7 @@ function makeServer() {
   registerAppTool(server, "sticker_pick", {
     title: "Show an original sticker",
     description: "Display one original sticker from the user's collection as a small image card. Use the id returned by sticker_search.",
-    inputSchema: { id: z.string().min(1).describe("Sticker id from sticker_search") },
+    inputSchema: z.object({ id: z.string().min(1).describe("Sticker id from sticker_search") }),
     outputSchema,
     _meta: { ui: { resourceUri: RESOURCE_URI } }
   }, async ({ id }) => {
@@ -92,7 +92,7 @@ const httpServer = createServer(async (req, res) => {
     res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
     const server = makeServer();
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
-    res.on("close", () => { transport.close(); server.close(); });
+    res.on("close", () => { void transport.close().catch(() => {}); void server.close().catch(() => {}); });
     try {
       await server.connect(transport);
       await transport.handleRequest(req, res);
