@@ -19,10 +19,12 @@ body{margin:0;padding:10px;color:var(--color-text-primary,#222);background:trans
 <script>
 const statusEl=document.getElementById('status');
 const itemsEl=document.getElementById('items');
+let hasRendered=false;
 function render(payload){
   const data=payload?.structuredContent || payload?.result?.structuredContent || payload?.toolOutput || payload;
   const stickers=Array.isArray(data?.stickers)?data.stickers:[];
   if(!stickers.length){statusEl.textContent='没有收到表情包数据；请在聊天中搜索或挑选一张表情包。';return;}
+  hasRendered=true;
   statusEl.textContent=stickers.length===1?'你的原版表情包':'找到的原版表情包';
   itemsEl.replaceChildren();
   for(const s of stickers){
@@ -34,14 +36,55 @@ function render(payload){
     card.append(img,name,labels);itemsEl.append(card);
   }
 }
+
+let rpcId=0;
+const pendingRequests=new Map();
+const rpcNotify=(method,params)=>window.parent.postMessage({jsonrpc:'2.0',method,params},'*');
+const rpcRequest=(method,params)=>new Promise((resolve,reject)=>{
+  const id=++rpcId;
+  pendingRequests.set(id,{resolve,reject});
+  window.parent.postMessage({jsonrpc:'2.0',id,method,params},'*');
+});
+
 window.addEventListener('message',(event)=>{
+ if(event.source!==window.parent)return;
  const msg=event.data;
  if(!msg||typeof msg!=='object')return;
- if(msg.method==='ui/notifications/tool-result')render(msg.params?.content?.[0]||msg.params?.structuredContent||msg.params);
+
+ if(msg.jsonrpc==='2.0'&&typeof msg.id==='number'){
+   const pending=pendingRequests.get(msg.id);
+   if(!pending)return;
+   pendingRequests.delete(msg.id);
+   if(msg.error)pending.reject(msg.error);else pending.resolve(msg.result);
+   return;
+ }
+
+ if(msg.method==='ui/notifications/tool-result')render(msg.params);
  if(msg.method==='ui/notifications/tool-input'){}
  if(msg.type==='tool-result')render(msg.payload||msg.data);
 });
-if(window.openai?.toolOutput)render(window.openai.toolOutput);
+
+async function initializeBridge(){
+  try{
+    await rpcRequest('ui/initialize',{
+      appInfo:{name:'azhou-sticker-widget',version:'1.0.1'},
+      appCapabilities:{},
+      protocolVersion:'2026-01-26'
+    });
+    rpcNotify('ui/notifications/initialized',{});
+  }catch(error){
+    console.error('Failed to initialize MCP Apps bridge:',error);
+  }
+}
+
+initializeBridge();
+
+let fallbackChecks=0;
+const fallbackTimer=setInterval(()=>{
+  if(window.openai?.toolOutput)render(window.openai.toolOutput);
+  fallbackChecks+=1;
+  if(hasRendered||fallbackChecks>=40)clearInterval(fallbackTimer);
+},250);
 </script>
 </body>
 </html>
