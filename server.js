@@ -10,16 +10,30 @@ import { z } from "zod";
 const ROOT = fileURLToPath(new URL(".", import.meta.url));
 const stickers = JSON.parse(readFileSync(join(ROOT, "stickers.json"), "utf8"));
 const widgetHtml = readFileSync(join(ROOT, "public", "sticker-widget.html"), "utf8");
-const RESOURCE_URI = "ui://stickers/widget.html";
+const RESOURCE_URI = "ui://stickers/widget-v2.html";
+const RESOURCE_DOMAINS = ["https://i.postimg.cc", "https://pic1.imgdb.cn"];
+const RESOURCE_META = {
+  ui: {
+    csp: { resourceDomains: RESOURCE_DOMAINS },
+    prefersBorder: true
+  },
+  "openai/widgetCSP": { resource_domains: RESOURCE_DOMAINS },
+  "openai/widgetPrefersBorder": true
+};
 
 function makeServer() {
   const server = new McpServer({ name: "azhou-stickers", version: "1.0.0" });
 
   registerAppResource(server, "sticker-widget", RESOURCE_URI, {
     description: "Displays original stickers from the user's personal sticker collection.",
-    _meta: { ui: { csp: { resourceDomains: ["https://i.postimg.cc"] } } }
+    _meta: RESOURCE_META
   }, async () => ({
-    contents: [{ uri: RESOURCE_URI, mimeType: RESOURCE_MIME_TYPE, text: widgetHtml }]
+    contents: [{
+      uri: RESOURCE_URI,
+      mimeType: RESOURCE_MIME_TYPE,
+      text: widgetHtml,
+      _meta: RESOURCE_META
+    }]
   }));
 
   const stickerSchema = z.object({
