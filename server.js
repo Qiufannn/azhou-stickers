@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
+import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -8,6 +9,8 @@ import { z } from "zod";
 
 const ROOT = fileURLToPath(new URL(".", import.meta.url));
 const STICKERS = JSON.parse(readFileSync(join(ROOT, "stickers.json"), "utf8"));
+const STICKER_WIDGET_HTML = readFileSync(join(ROOT, "sticker-widget.html"), "utf8");
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "https://azhou-stickers.onrender.com").replace(/\/$/, "");
 const STICKER_BY_ID = new Map(STICKERS.map((sticker) => [sticker.id, sticker]));
 const IMAGE_CACHE = new Map();
 const IMAGE_CACHE_TTL_MS = 60 * 60 * 1000;
@@ -17,6 +20,12 @@ const searchResultSchema = z.object({
   name: z.string(),
   labels: z.array(z.string())
 });
+
+const sendOutputSchema = {
+  id: z.string(),
+  name: z.string(),
+  imageUrl: z.string().url()
+};
 
 function tokenize(query) {
   return query
@@ -101,11 +110,39 @@ async function loadNativeImage(sticker) {
 
 function createStickerServer() {
   const server = new McpServer(
-    { name: "azhou-native-stickers", version: "2.3.0" },
+    { name: "azhou-native-stickers", version: "2.4.0" },
     {
       instructions:
-        "Use find_azhou_stickers to search Qiufann's original sticker collection. Then call send_azhou_sticker with one returned id. After the send call, copy structuredContent.markdown exactly into the assistant's visible reply so the sticker appears outside the collapsed integration result. Never invent a sticker id or replace it with a generated image."
+        "Use find_azhou_stickers to search Qiufann's original sticker collection. Then call send_azhou_sticker with one returned id. The send tool renders the selected sticker through its inline MCP App UI. Do not add a markdown image URL or replace the sticker with a generated image."
     }
+  );
+
+  registerAppResource(
+    server,
+    "sticker-widget",
+    "ui://sticker/v1.html",
+    {},
+    async () => ({
+      contents: [
+        {
+          uri: "ui://sticker/v1.html",
+          mimeType: RESOURCE_MIME_TYPE,
+          text: STICKER_WIDGET_HTML,
+          _meta: {
+            ui: {
+              prefersBorder: false,
+              csp: {
+                resourceDomains: [PUBLIC_BASE_URL]
+              }
+            },
+            "openai/widgetDescription": "A compact sticker image shown inline in the conversation.",
+            "openai/ui": {
+              availableDisplayModes: ["inline"]
+            }
+          }
+        }
+      ]
+    })
   );
 
   server.registerTool(
@@ -133,15 +170,28 @@ function createStickerServer() {
     }
   );
 
-  server.registerTool(
+  registerAppTool(
+    server,
     "send_azhou_sticker",
     {
       title: "发送阿昼的表情包",
       description:
-        "把 find_azhou_stickers 返回的某个表情包作为 MCP 原生图片直接发送到聊天中。不会打开 UI 卡片。",
-      inputSchema: z.object({
-        id: z.string().regex(/^\d{3}$/).describe("搜索结果中的三位表情包编号")
-      })
+        "把 find_azhou_stickers 返回的表情包直接显示成聊天里的小贴图。",
+      inputSchema: {
+        id: z.string().regex(/^\\d{3}$/).describe("搜索结果中的三位表情包编号")
+      },
+      outputSchema: sendOutputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: false
+      },
+      _meta: {
+        ui: { resourceUri: "ui://sticker/v1.html" },
+        "openai/outputTemplate": "ui://sticker/v1.html",
+        "openai/toolInvocation/invoking": "挑表情包…",
+        "openai/toolInvocation/invoked": "表情包来啦"
+      }
     },
     async ({ id }) => {
       const sticker = STICKER_BY_ID.get(id);
@@ -152,25 +202,14 @@ function createStickerServer() {
         };
       }
 
-      try {
-        const image = await loadNativeImage(sticker);
-        return {
-          content: [image],
-          structuredContent: {
-            id: sticker.id,
-            name: sticker.name
-          }
-        };
-      } catch (error) {
-        console.error(`Failed to load sticker ${id}:`, error);
-        return {
-          isError: true,
-          content: [{
-            type: "text",
-            text: `表情包 ${id} 暂时读取失败，请稍后重试。`
-          }]
-        };
-      }
+      return {
+        content: [],
+        structuredContent: {
+          id: sticker.id,
+          name: sticker.name,
+          imageUrl: `${PUBLIC_BASE_URL}/sticker/${sticker.id}`
+        }
+      };
     }
   );
 
@@ -216,7 +255,7 @@ const httpServer = createServer(async (req, res) => {
   if (req.method === "GET" && url.pathname === "/") {
     res
       .writeHead(200, { "content-type": "text/plain; charset=utf-8" })
-      .end("Azhou native sticker MCP v2.3 is running.");
+      .end("Azhou native sticker MCP v2.4 is running.");
     return;
   }
 
@@ -264,5 +303,5 @@ const httpServer = createServer(async (req, res) => {
 });
 
 httpServer.listen(port, "0.0.0.0", () => {
-  console.log(`Azhou native sticker MCP v2 listening on port ${port}`);
+  console.log(`Azhou native sticker MCP v2.4 listening on port ${port}`);
 });
