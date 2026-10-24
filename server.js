@@ -4,22 +4,11 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
+import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import { z } from "zod";
 
 const ROOT = fileURLToPath(new URL(".", import.meta.url));
 const stickers = JSON.parse(readFileSync(join(ROOT, "stickers.json"), "utf8"));
-const widgetHtml = readFileSync(join(ROOT, "public", "sticker-widget.html"), "utf8");
-const RESOURCE_URI = "ui://stickers/widget-v3.html";
-const RESOURCE_DOMAINS = ["https://i.postimg.cc", "https://pic1.imgdb.cn"];
-const RESOURCE_META = {
-  ui: {
-    csp: { resourceDomains: RESOURCE_DOMAINS },
-    prefersBorder: true
-  },
-  "openai/widgetCSP": { resource_domains: RESOURCE_DOMAINS },
-  "openai/widgetPrefersBorder": true
-};
 
 async function fetchStickerImage(imageUrl) {
   const response = await fetch(imageUrl, { signal: AbortSignal.timeout(15000) });
@@ -31,19 +20,7 @@ async function fetchStickerImage(imageUrl) {
 }
 
 function makeServer() {
-  const server = new McpServer({ name: "azhou-stickers", version: "1.0.1" });
-
-  registerAppResource(server, "sticker-widget", RESOURCE_URI, {
-    description: "Displays original stickers from the user's personal sticker collection.",
-    _meta: RESOURCE_META
-  }, async () => ({
-    contents: [{
-      uri: RESOURCE_URI,
-      mimeType: RESOURCE_MIME_TYPE,
-      text: widgetHtml,
-      _meta: RESOURCE_META
-    }]
-  }));
+  const server = new McpServer({ name: "azhou-stickers", version: "1.1.0" });
 
   const stickerSchema = z.object({
     id: z.string(),
@@ -57,8 +34,7 @@ function makeServer() {
     title: "Search personal stickers",
     description: "Search the user's existing sticker collection by meaning, mood, name, or labels. Use this when a sticker would naturally fit the conversation. Returns original image URLs, not generated images.",
     inputSchema: z.object({ query: z.string().min(1).describe("Meaning, emotion, or situation to match") }),
-    outputSchema,
-    _meta: { ui: { resourceUri: RESOURCE_URI } }
+    outputSchema
   }, async ({ query }) => {
     const terms = query.toLowerCase().split(/[\s，,。！？!？、]+/).filter(Boolean);
     const scored = stickers.map((s) => {
@@ -76,10 +52,9 @@ function makeServer() {
 
   registerAppTool(server, "sticker_pick", {
     title: "Show an original sticker",
-    description: "Display one original sticker from the user's collection as a small image card. Use the id returned by sticker_search.",
+    description: "Return one original sticker from the user's collection as a native image. Use the id returned by sticker_search.",
     inputSchema: z.object({ id: z.string().min(1).describe("Sticker id from sticker_search") }),
-    outputSchema,
-    _meta: { ui: { resourceUri: RESOURCE_URI } }
+    outputSchema
   }, async ({ id }) => {
     const s = stickers.find(item => item.id === id);
     if (!s) return { content: [{ type: "text", text: "Sticker id not found. Search the collection again." }], structuredContent: { stickers: [] } };
