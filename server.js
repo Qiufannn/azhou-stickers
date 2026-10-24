@@ -9,7 +9,11 @@ import { z } from "zod";
 
 const ROOT = fileURLToPath(new URL(".", import.meta.url));
 const stickers = JSON.parse(readFileSync(join(ROOT, "stickers.json"), "utf8"));
-const LEGACY_RESOURCE_URIS = ["ui://stickers/widget-v2.html", "ui://stickers/widget-v3.html"];
+const LEGACY_RESOURCE_URIS = [
+  "ui://stickers/widget.html",
+  "ui://stickers/widget-v2.html",
+  "ui://stickers/widget-v3.html"
+];
 const LEGACY_RESOURCE_META = {
   ui: { prefersBorder: false },
   "openai/widgetPrefersBorder": false
@@ -17,7 +21,35 @@ const LEGACY_RESOURCE_META = {
 const legacyWidgetHtml = `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>html,body{margin:0;background:transparent;color:#6d8492;font:13px/1.5 system-ui,sans-serif}body{padding:8px 12px}</style></head>
-<body>旧版表情卡片已停用；新表情包会直接显示在聊天中。</body></html>`;
+<body>旧版表情卡片已停用；新表情包会直接显示在聊天中。
+<script>
+(() => {
+  let rpcId = 0;
+  const pending = new Map();
+  const request = (method, params) => new Promise((resolve, reject) => {
+    const id = ++rpcId;
+    pending.set(id, { resolve, reject });
+    window.parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
+  });
+  window.addEventListener("message", (event) => {
+    if (event.source !== window.parent) return;
+    const message = event.data;
+    if (!message || message.jsonrpc !== "2.0" || typeof message.id !== "number") return;
+    const waiter = pending.get(message.id);
+    if (!waiter) return;
+    pending.delete(message.id);
+    if (message.error) waiter.reject(message.error);
+    else waiter.resolve(message.result);
+  }, { passive: true });
+  request("ui/initialize", {
+    appInfo: { name: "azhou-stickers-legacy", version: "1.2.0" },
+    appCapabilities: {},
+    protocolVersion: "2026-01-26"
+  }).then(() => {
+    window.parent.postMessage({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} }, "*");
+  }).catch(() => {});
+})();
+</script></body></html>`;
 
 async function fetchStickerImage(imageUrl) {
   const response = await fetch(imageUrl, { signal: AbortSignal.timeout(15000) });
@@ -29,19 +61,14 @@ async function fetchStickerImage(imageUrl) {
 }
 
 function makeServer() {
-  const server = new McpServer({ name: "azhou-stickers", version: "1.1.0" });
+  const server = new McpServer({ name: "azhou-stickers", version: "1.2.0" });
 
   for (const [index, uri] of LEGACY_RESOURCE_URIS.entries()) {
-    registerAppResource(server, `legacy-sticker-widget-${index + 2}`, uri, {
+    registerAppResource(server, `legacy-sticker-widget-${index + 1}`, uri, {
       description: "Compatibility view for older sticker messages.",
       _meta: LEGACY_RESOURCE_META
     }, async () => ({
-      contents: [{
-        uri,
-        mimeType: RESOURCE_MIME_TYPE,
-        text: legacyWidgetHtml,
-        _meta: LEGACY_RESOURCE_META
-      }]
+      contents: [{ uri, mimeType: RESOURCE_MIME_TYPE, text: legacyWidgetHtml, _meta: LEGACY_RESOURCE_META }]
     }));
   }
 
@@ -59,7 +86,7 @@ function makeServer() {
     inputSchema: z.object({ query: z.string().min(1).describe("Meaning, emotion, or situation to match") }),
     outputSchema
   }, async ({ query }) => {
-    const terms = query.toLowerCase().split(/[\s，,。！？!？、]+/).filter(Boolean);
+    const terms = query.toLowerCase().split(/[\\s，,。！？!？、]+/).filter(Boolean);
     const scored = stickers.map((s) => {
       const searchable = [s.name, ...(s.labels || [])].join(" ").toLowerCase();
       const score = terms.reduce((sum, term) => sum + (searchable.includes(term) ? 2 : 0), 0);
@@ -83,11 +110,8 @@ function makeServer() {
     if (!s) return { content: [{ type: "text", text: "Sticker id not found. Search the collection again." }], structuredContent: { stickers: [] } };
     const item = { id: s.id, name: s.name, labels: s.labels || [], imageUrl: s.imageUrl };
     let imageContent;
-    try {
-      imageContent = await fetchStickerImage(s.imageUrl);
-    } catch (error) {
-      console.error(`Failed to fetch sticker ${s.id}:`, error);
-    }
+    try { imageContent = await fetchStickerImage(s.imageUrl); }
+    catch (error) { console.error(`Failed to fetch sticker ${s.id}:`, error); }
     return {
       content: [
         { type: "text", text: `Showing the original sticker “${s.name}”.` },
