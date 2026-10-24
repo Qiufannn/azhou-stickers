@@ -15,17 +15,65 @@ const LEGACY_RESOURCE_URIS = [
   "ui://stickers/widget-v3.html"
 ];
 const LEGACY_RESOURCE_META = {
-  ui: { prefersBorder: false },
+  ui: {
+    prefersBorder: false,
+    csp: {
+      resourceDomains: ["https://i.postimg.cc", "https://pic1.imgdb.cn"]
+    }
+  },
+  "openai/widgetCSP": {
+    resource_domains: ["https://i.postimg.cc", "https://pic1.imgdb.cn"]
+  },
   "openai/widgetPrefersBorder": false
 };
 const legacyWidgetHtml = `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>html,body{margin:0;background:transparent;color:#6d8492;font:13px/1.5 system-ui,sans-serif}body{padding:8px 12px}</style></head>
-<body>旧版表情卡片已停用；新表情包会直接显示在聊天中。
+<style>
+html,body{margin:0;background:transparent;color:#6d8492;font:13px/1.5 system-ui,sans-serif}
+body{padding:8px 12px}
+#status{padding:8px 0}
+#sticker{display:none;width:min(220px,70vw);height:auto;border-radius:14px}
+</style></head>
+<body><div id="status">正在接住表情包……</div><img id="sticker" alt="表情包">
 <script>
 (() => {
   let rpcId = 0;
   const pending = new Map();
+  const status = document.querySelector("#status");
+  const sticker = document.querySelector("#sticker");
+  let rendered = false;
+  const visit = (value, seen = new Set()) => {
+    if (!value || typeof value !== "object" || seen.has(value)) return null;
+    seen.add(value);
+    if (value.type === "image" && typeof value.data === "string") {
+      return "data:" + (value.mimeType || "image/jpeg") + ";base64," + value.data;
+    }
+    if (typeof value.imageUrl === "string") return value.imageUrl;
+    if (Array.isArray(value)) {
+      for (const item of value) { const hit = visit(item, seen); if (hit) return hit; }
+      return null;
+    }
+    for (const item of Object.values(value)) {
+      const hit = visit(item, seen);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  const render = (payload) => {
+    if (rendered) return true;
+    const src = visit(payload);
+    if (!src) return false;
+    rendered = true;
+    sticker.onload = () => { status.style.display = "none"; sticker.style.display = "block"; };
+    sticker.onerror = () => { rendered = false; status.textContent = "图片加载失败，请重新发送一次。"; };
+    sticker.src = src;
+    return true;
+  };
+  const inspectCompatibilityData = () => {
+    render(window.openai?.toolResponseMetadata) ||
+      render(window.openai?.toolOutput) ||
+      render(window.openai?.toolInput);
+  };
   const request = (method, params) => new Promise((resolve, reject) => {
     const id = ++rpcId;
     pending.set(id, { resolve, reject });
@@ -34,19 +82,32 @@ const legacyWidgetHtml = `<!doctype html>
   window.addEventListener("message", (event) => {
     if (event.source !== window.parent) return;
     const message = event.data;
-    if (!message || message.jsonrpc !== "2.0" || typeof message.id !== "number") return;
-    const waiter = pending.get(message.id);
-    if (!waiter) return;
-    pending.delete(message.id);
-    if (message.error) waiter.reject(message.error);
-    else waiter.resolve(message.result);
+    if (!message || message.jsonrpc !== "2.0") return;
+    if (typeof message.id === "number") {
+      const waiter = pending.get(message.id);
+      if (!waiter) return;
+      pending.delete(message.id);
+      if (message.error) waiter.reject(message.error);
+      else waiter.resolve(message.result);
+      return;
+    }
+    if (message.method === "ui/notifications/tool-result") render(message.params);
   }, { passive: true });
   request("ui/initialize", {
-    appInfo: { name: "azhou-stickers-legacy", version: "1.2.0" },
+    appInfo: { name: "azhou-stickers-legacy", version: "1.3.0" },
     appCapabilities: {},
     protocolVersion: "2026-01-26"
   }).then(() => {
     window.parent.postMessage({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} }, "*");
+    inspectCompatibilityData();
+    let attempts = 0;
+    const timer = setInterval(() => {
+      inspectCompatibilityData();
+      if (rendered || ++attempts >= 40) {
+        clearInterval(timer);
+        if (!rendered) status.textContent = "没有收到图片，请重新发送一次。";
+      }
+    }, 250);
   }).catch(() => {});
 })();
 </script></body></html>`;
@@ -61,7 +122,7 @@ async function fetchStickerImage(imageUrl) {
 }
 
 function makeServer() {
-  const server = new McpServer({ name: "azhou-stickers", version: "1.2.0" });
+  const server = new McpServer({ name: "azhou-stickers", version: "1.3.0" });
 
   for (const [index, uri] of LEGACY_RESOURCE_URIS.entries()) {
     registerAppResource(server, `legacy-sticker-widget-${index + 1}`, uri, {
