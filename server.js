@@ -12,19 +12,10 @@ const STICKER_BY_ID = new Map(STICKERS.map((sticker) => [sticker.id, sticker]));
 const IMAGE_CACHE = new Map();
 const IMAGE_CACHE_TTL_MS = 60 * 60 * 1000;
 const IMAGE_CACHE_MAX_ITEMS = 25;
-const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "https://azhou-stickers.onrender.com").replace(/\/$/, "");
-
 const searchResultSchema = z.object({
   id: z.string(),
   name: z.string(),
   labels: z.array(z.string())
-});
-
-const stickerOutputSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  imageUrl: z.string().url(),
-  markdown: z.string()
 });
 
 function tokenize(query) {
@@ -110,7 +101,7 @@ async function loadNativeImage(sticker) {
 
 function createStickerServer() {
   const server = new McpServer(
-    { name: "azhou-native-stickers", version: "2.2.0" },
+    { name: "azhou-native-stickers", version: "2.3.0" },
     {
       instructions:
         "Use find_azhou_stickers to search Qiufann's original sticker collection. Then call send_azhou_sticker with one returned id. After the send call, copy structuredContent.markdown exactly into the assistant's visible reply so the sticker appears outside the collapsed integration result. Never invent a sticker id or replace it with a generated image."
@@ -163,21 +154,11 @@ function createStickerServer() {
 
       try {
         const image = await loadNativeImage(sticker);
-        const publicImageUrl = `${PUBLIC_BASE_URL}/sticker/${sticker.id}`;
-        const markdown = `![${sticker.id}｜${sticker.name}](${publicImageUrl})`;
         return {
-          content: [
-            image,
-            {
-              type: "text",
-              text: `${sticker.id}｜${sticker.name}\n请把下面这行原样放进最终回复：\n${markdown}`
-            }
-          ],
+          content: [image],
           structuredContent: {
             id: sticker.id,
-            name: sticker.name,
-            imageUrl: publicImageUrl,
-            markdown
+            name: sticker.name
           }
         };
       } catch (error) {
@@ -235,7 +216,7 @@ const httpServer = createServer(async (req, res) => {
   if (req.method === "GET" && url.pathname === "/") {
     res
       .writeHead(200, { "content-type": "text/plain; charset=utf-8" })
-      .end("Azhou native sticker MCP v2.2 is running.");
+      .end("Azhou native sticker MCP v2.3 is running.");
     return;
   }
 
