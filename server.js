@@ -12,6 +12,7 @@ const STICKER_BY_ID = new Map(STICKERS.map((sticker) => [sticker.id, sticker]));
 const IMAGE_CACHE = new Map();
 const IMAGE_CACHE_TTL_MS = 60 * 60 * 1000;
 const IMAGE_CACHE_MAX_ITEMS = 25;
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "https://azhou-stickers.onrender.com").replace(/\/$/, "");
 
 const searchResultSchema = z.object({
   id: z.string(),
@@ -109,7 +110,7 @@ async function loadNativeImage(sticker) {
 
 function createStickerServer() {
   const server = new McpServer(
-    { name: "azhou-native-stickers", version: "2.1.0" },
+    { name: "azhou-native-stickers", version: "2.2.0" },
     {
       instructions:
         "Use find_azhou_stickers to search Qiufann's original sticker collection. Then call send_azhou_sticker with one returned id. After the send call, copy structuredContent.markdown exactly into the assistant's visible reply so the sticker appears outside the collapsed integration result. Never invent a sticker id or replace it with a generated image."
@@ -162,7 +163,8 @@ function createStickerServer() {
 
       try {
         const image = await loadNativeImage(sticker);
-        const markdown = `![${sticker.id}｜${sticker.name}](${sticker.imageUrl})`;
+        const publicImageUrl = `${PUBLIC_BASE_URL}/sticker/${sticker.id}`;
+        const markdown = `![${sticker.id}｜${sticker.name}](${publicImageUrl})`;
         return {
           content: [
             image,
@@ -174,7 +176,7 @@ function createStickerServer() {
           structuredContent: {
             id: sticker.id,
             name: sticker.name,
-            imageUrl: sticker.imageUrl,
+            imageUrl: publicImageUrl,
             markdown
           }
         };
@@ -205,10 +207,35 @@ const httpServer = createServer(async (req, res) => {
 
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
+  const stickerMatch = url.pathname.match(/^\/sticker\/(\d{3})$/);
+  if (req.method === "GET" && stickerMatch) {
+    const sticker = STICKER_BY_ID.get(stickerMatch[1]);
+    if (!sticker) {
+      res.writeHead(404, { "content-type": "text/plain; charset=utf-8" }).end("Sticker not found");
+      return;
+    }
+
+    try {
+      const image = await loadNativeImage(sticker);
+      const buffer = Buffer.from(image.data, "base64");
+      res.writeHead(200, {
+        "content-type": image.mimeType,
+        "content-length": buffer.length,
+        "cache-control": "public, max-age=86400, stale-while-revalidate=604800",
+        "access-control-allow-origin": "*"
+      });
+      res.end(buffer);
+    } catch (error) {
+      console.error(`Failed to proxy sticker ${sticker.id}:`, error);
+      res.writeHead(502, { "content-type": "text/plain; charset=utf-8" }).end("Sticker unavailable");
+    }
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/") {
     res
       .writeHead(200, { "content-type": "text/plain; charset=utf-8" })
-      .end("Azhou native sticker MCP v2.1 is running.");
+      .end("Azhou native sticker MCP v2.2 is running.");
     return;
   }
 
