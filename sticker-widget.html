@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root { color-scheme: light dark; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      overflow: hidden;
+    }
+    body {
+      display: flex;
+      align-items: flex-start;
+      justify-content: flex-start;
+      min-height: 1px;
+    }
+    #sticker {
+      display: block;
+      width: min(168px, 46vw);
+      height: auto;
+      max-height: 220px;
+      object-fit: contain;
+      border: 0;
+      border-radius: 12px;
+      background: transparent;
+    }
+    #sticker[hidden] { display: none; }
+  </style>
+</head>
+<body>
+  <img id="sticker" alt="" hidden />
+  <script>
+    const img = document.getElementById("sticker");
+
+    function render(output) {
+      if (!output || !output.imageUrl) return;
+      img.src = output.imageUrl;
+      img.alt = output.name || "表情包";
+      img.hidden = false;
+      requestAnimationFrame(() => {
+        window.openai?.notifyIntrinsicHeight?.(document.documentElement.scrollHeight);
+      });
+    }
+
+    render(window.openai?.toolOutput);
+
+    window.addEventListener("openai:set_globals", (event) => {
+      render(event?.detail?.globals?.toolOutput);
+    });
+  </script>
+</body>
+</html>
