@@ -19,6 +19,13 @@ const searchResultSchema = z.object({
   labels: z.array(z.string())
 });
 
+const stickerOutputSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  imageUrl: z.string().url(),
+  markdown: z.string()
+});
+
 function tokenize(query) {
   return query
     .toLowerCase()
@@ -102,10 +109,10 @@ async function loadNativeImage(sticker) {
 
 function createStickerServer() {
   const server = new McpServer(
-    { name: "azhou-native-stickers", version: "2.0.0" },
+    { name: "azhou-native-stickers", version: "2.1.0" },
     {
       instructions:
-        "Use find_azhou_stickers to search Qiufann's original sticker collection. Then call send_azhou_sticker with one returned id. The send tool returns a native image directly; never invent a sticker id or replace it with a generated image."
+        "Use find_azhou_stickers to search Qiufann's original sticker collection. Then call send_azhou_sticker with one returned id. After the send call, copy structuredContent.markdown exactly into the assistant's visible reply so the sticker appears outside the collapsed integration result. Never invent a sticker id or replace it with a generated image."
     }
   );
 
@@ -155,11 +162,21 @@ function createStickerServer() {
 
       try {
         const image = await loadNativeImage(sticker);
+        const markdown = `![${sticker.id}｜${sticker.name}](${sticker.imageUrl})`;
         return {
           content: [
             image,
-            { type: "text", text: `${sticker.id}｜${sticker.name}` }
-          ]
+            {
+              type: "text",
+              text: `${sticker.id}｜${sticker.name}\n请把下面这行原样放进最终回复：\n${markdown}`
+            }
+          ],
+          structuredContent: {
+            id: sticker.id,
+            name: sticker.name,
+            imageUrl: sticker.imageUrl,
+            markdown
+          }
         };
       } catch (error) {
         console.error(`Failed to load sticker ${id}:`, error);
@@ -191,7 +208,7 @@ const httpServer = createServer(async (req, res) => {
   if (req.method === "GET" && url.pathname === "/") {
     res
       .writeHead(200, { "content-type": "text/plain; charset=utf-8" })
-      .end("Azhou native sticker MCP v2 is running.");
+      .end("Azhou native sticker MCP v2.1 is running.");
     return;
   }
 
