@@ -21,6 +21,15 @@ const RESOURCE_META = {
   "openai/widgetPrefersBorder": true
 };
 
+async function fetchStickerImage(imageUrl) {
+  const response = await fetch(imageUrl, { signal: AbortSignal.timeout(15000) });
+  if (!response.ok) throw new Error(`Image request failed with ${response.status}`);
+  const mimeType = (response.headers.get("content-type") || "image/jpeg").split(";")[0];
+  if (!mimeType.startsWith("image/")) throw new Error(`Unexpected image type: ${mimeType}`);
+  const data = Buffer.from(await response.arrayBuffer()).toString("base64");
+  return { type: "image", data, mimeType };
+}
+
 function makeServer() {
   const server = new McpServer({ name: "azhou-stickers", version: "1.0.0" });
 
@@ -75,8 +84,17 @@ function makeServer() {
     const s = stickers.find(item => item.id === id);
     if (!s) return { content: [{ type: "text", text: "Sticker id not found. Search the collection again." }], structuredContent: { stickers: [] } };
     const item = { id: s.id, name: s.name, labels: s.labels || [], imageUrl: s.imageUrl };
+    let imageContent;
+    try {
+      imageContent = await fetchStickerImage(s.imageUrl);
+    } catch (error) {
+      console.error(`Failed to fetch sticker ${s.id}:`, error);
+    }
     return {
-      content: [{ type: "text", text: `Showing the original sticker “${s.name}”.` }],
+      content: [
+        { type: "text", text: `Showing the original sticker “${s.name}”.` },
+        ...(imageContent ? [imageContent] : [])
+      ],
       structuredContent: { stickers: [item] }
     };
   });
