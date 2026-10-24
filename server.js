@@ -178,7 +178,7 @@ function createStickerServer() {
       description:
         "把 find_azhou_stickers 返回的表情包直接显示成聊天里的小贴图。",
       inputSchema: {
-        id: z.string().regex(/^\\d{3}$/).describe("搜索结果中的三位表情包编号")
+        id: z.string().regex(/^\d{3}$/).describe("搜索结果中的三位表情包编号")
       },
       outputSchema: sendOutputSchema,
       annotations: {
