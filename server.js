@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import { z } from "zod";
 
 const ROOT = fileURLToPath(new URL(".", import.meta.url));
@@ -30,7 +29,7 @@ function makeServer() {
   });
   const outputSchema = z.object({ stickers: z.array(stickerSchema) });
 
-  registerAppTool(server, "sticker_search", {
+  server.registerTool("sticker_search", {
     title: "Search personal stickers",
     description: "Search the user's existing sticker collection by meaning, mood, name, or labels. Use this when a sticker would naturally fit the conversation. Returns original image URLs, not generated images.",
     inputSchema: z.object({ query: z.string().min(1).describe("Meaning, emotion, or situation to match") }),
@@ -50,7 +49,7 @@ function makeServer() {
     };
   });
 
-  registerAppTool(server, "sticker_pick", {
+  server.registerTool("sticker_pick", {
     title: "Show an original sticker",
     description: "Return one original sticker from the user's collection as a native image. Use the id returned by sticker_search.",
     inputSchema: z.object({ id: z.string().min(1).describe("Sticker id from sticker_search") }),
