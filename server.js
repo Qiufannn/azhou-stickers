@@ -10,7 +10,7 @@ import { z } from "zod";
 const ROOT = fileURLToPath(new URL(".", import.meta.url));
 const stickers = JSON.parse(readFileSync(join(ROOT, "stickers.json"), "utf8"));
 const widgetHtml = readFileSync(join(ROOT, "public", "sticker-widget.html"), "utf8");
-const RESOURCE_URI = "ui://stickers/widget-v2.html";
+const RESOURCE_URI = "ui://stickers/widget-v3.html";
 const RESOURCE_DOMAINS = ["https://i.postimg.cc", "https://pic1.imgdb.cn"];
 const RESOURCE_META = {
   ui: {
@@ -31,7 +31,7 @@ async function fetchStickerImage(imageUrl) {
 }
 
 function makeServer() {
-  const server = new McpServer({ name: "azhou-stickers", version: "1.0.0" });
+  const server = new McpServer({ name: "azhou-stickers", version: "1.0.1" });
 
   registerAppResource(server, "sticker-widget", RESOURCE_URI, {
     description: "Displays original stickers from the user's personal sticker collection.",
