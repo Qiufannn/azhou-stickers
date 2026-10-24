@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root { color-scheme: light dark; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      overflow: hidden;
+    }
+    body {
+      display: flex;
+      align-items: flex-start;
+      justify-content: flex-start;
+      min-height: 1px;
+    }
+    #sticker {
+      display: block;
+      width: min(168px, 46vw);
+      height: auto;
+      max-height: 220px;
+      object-fit: contain;
+      border: 0;
+      border-radius: 12px;
+      background: transparent;
+    }
+    #sticker[hidden], #fallback[hidden] { display: none; }
+    #fallback {
+      font: 12px/1.4 system-ui, sans-serif;
+      opacity: .65;
+      padding: 4px 6px;
+    }
+  </style>
+</head>
+<body>
+  <img id="sticker" alt="" hidden />
+  <div id="fallback" hidden>贴图加载失败</div>
+
+  <script>
+    const img = document.getElementById("sticker");
+    const fallback = document.getElementById("fallback");
+
+    let current = null;
+    let retries = 0;
+    let rpcId = 0;
+    const pending = new Map();
+
+    function notifyHeight() {
+      requestAnimationFrame(() => {
+        window.openai?.notifyIntrinsicHeight?.(
+          Math.max(1, document.documentElement.scrollHeight)
+        );
+      });
+    }
+
+    function normalize(payload) {
+      if (!payload) return null;
+      if (payload.structuredContent?.imageUrl) return payload.structuredContent;
+      if (payload.imageUrl) return payload;
+      if (payload.toolOutput?.imageUrl) return payload.toolOutput;
+      return null;
+    }
+
+    function render(payload) {
+      const output = normalize(payload);
+      if (!output?.imageUrl) return;
+
+      current = output;
+      retries = 0;
+      fallback.hidden = true;
+      img.alt = output.name || "表情包";
+      img.hidden = true;
+      img.src = output.imageUrl;
+    }
+
+    img.addEventListener("load", () => {
+      fallback.hidden = true;
+      img.hidden = false;
+      notifyHeight();
+    });
+
+    img.addEventListener("error", () => {
+      if (current?.imageUrl && retries < 2) {
+        retries += 1;
+        const joiner = current.imageUrl.includes("?") ? "&" : "?";
+        setTimeout(() => {
+          img.src = current.imageUrl + joiner + "retry=" + retries;
+        }, 350 * retries);
+        return;
+      }
+      img.hidden = true;
+      fallback.hidden = false;
+      notifyHeight();
+    });
+
+    function rpcNotify(method, params) {
+      window.parent.postMessage({ jsonrpc: "2.0", method, params }, "*");
+    }
+
+    function rpcRequest(method, params) {
+      return new Promise((resolve, reject) => {
+        const id = ++rpcId;
+        pending.set(id, { resolve, reject });
+        window.parent.postMessage(
+          { jsonrpc: "2.0", id, method, params },
+          "*"
+        );
+      });
+    }
+
+    window.addEventListener("message", (event) => {
+      if (event.source !== window.parent) return;
+      const message = event.data;
+      if (!message || message.jsonrpc !== "2.0") return;
+
+      if (typeof message.id === "number") {
+        const request = pending.get(message.id);
+        if (!request) return;
+        pending.delete(message.id);
+        if (message.error) request.reject(message.error);
+        else request.resolve(message.result);
+        return;
+      }
+
+      if (message.method === "ui/notifications/tool-result") {
+        render(message.params);
+      }
+    }, { passive: true });
+
+    async function initializeBridge() {
+      try {
+        await rpcRequest("ui/initialize", {
+          appInfo: { name: "azhou-sticker-widget", version: "2.5.0" },
+          appCapabilities: {},
+          protocolVersion: "2026-01-26"
+        });
+        rpcNotify("ui/notifications/initialized", {});
+      } catch (_) {
+        // ChatGPT compatibility globals below remain as a fallback.
+      }
+    }
+
+    // ChatGPT compatibility path: immediate initial result.
+    render(window.openai?.toolOutput);
+
+    // Compatibility updates for hosts exposing the legacy globals event.
+    window.addEventListener("openai:set_globals", (event) => {
+      render(event?.detail?.globals?.toolOutput);
+    }, { passive: true });
+
+    initializeBridge();
+  </script>
+</body>
+</html>
