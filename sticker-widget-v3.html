@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      overflow: hidden;
+    }
+    #sticker {
+      display: block;
+      width: min(168px, 46vw);
+      height: auto;
+      max-height: 220px;
+      object-fit: contain;
+      border: 0;
+      border-radius: 12px;
+      background: transparent;
+    }
+    #sticker[hidden] { display: none; }
+  </style>
+</head>
+<body>
+  <img id="sticker" alt="" hidden />
+
+  <script>
+    const img = document.getElementById("sticker");
+
+    function render(output) {
+      if (!output?.imageUrl) return;
+      img.alt = output.name || "表情包";
+      img.onload = () => {
+        img.hidden = false;
+        window.openai?.notifyIntrinsicHeight?.(
+          Math.max(1, document.documentElement.scrollHeight)
+        );
+      };
+      img.onerror = () => {
+        img.hidden = true;
+      };
+      img.src = output.imageUrl;
+    }
+
+    // ChatGPT compatibility path: the host exposes structuredContent here.
+    render(window.openai?.toolOutput);
+
+    // Update only when ChatGPT sends a new tool result.
+    window.addEventListener("openai:set_globals", (event) => {
+      render(event?.detail?.globals?.toolOutput);
+    }, { passive: true });
+  </script>
+</body>
+</html>
