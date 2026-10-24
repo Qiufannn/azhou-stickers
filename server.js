@@ -9,7 +9,7 @@ import { z } from "zod";
 
 const ROOT = fileURLToPath(new URL(".", import.meta.url));
 const STICKERS = JSON.parse(readFileSync(join(ROOT, "stickers.json"), "utf8"));
-const STICKER_WIDGET_HTML = readFileSync(join(ROOT, "sticker-widget.html"), "utf8");
+const STICKER_WIDGET_HTML = readFileSync(join(ROOT, "sticker-widget-v2.html"), "utf8");
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "https://azhou-stickers.onrender.com").replace(/\/$/, "");
 const STICKER_BY_ID = new Map(STICKERS.map((sticker) => [sticker.id, sticker]));
 const IMAGE_CACHE = new Map();
@@ -110,7 +110,7 @@ async function loadNativeImage(sticker) {
 
 function createStickerServer() {
   const server = new McpServer(
-    { name: "azhou-native-stickers", version: "2.4.0" },
+    { name: "azhou-native-stickers", version: "2.5.0" },
     {
       instructions:
         "Use find_azhou_stickers to search Qiufann's original sticker collection. Then call send_azhou_sticker with one returned id. The send tool renders the selected sticker through its inline MCP App UI. Do not add a markdown image URL or replace the sticker with a generated image."
@@ -120,12 +120,12 @@ function createStickerServer() {
   registerAppResource(
     server,
     "sticker-widget",
-    "ui://sticker/v1.html",
+    "ui://sticker/v2.html",
     {},
     async () => ({
       contents: [
         {
-          uri: "ui://sticker/v1.html",
+          uri: "ui://sticker/v2.html",
           mimeType: RESOURCE_MIME_TYPE,
           text: STICKER_WIDGET_HTML,
           _meta: {
@@ -187,8 +187,8 @@ function createStickerServer() {
         openWorldHint: false
       },
       _meta: {
-        ui: { resourceUri: "ui://sticker/v1.html" },
-        "openai/outputTemplate": "ui://sticker/v1.html",
+        ui: { resourceUri: "ui://sticker/v2.html" },
+        "openai/outputTemplate": "ui://sticker/v2.html",
         "openai/toolInvocation/invoking": "挑表情包…",
         "openai/toolInvocation/invoked": "表情包来啦"
       }
@@ -255,7 +255,7 @@ const httpServer = createServer(async (req, res) => {
   if (req.method === "GET" && url.pathname === "/") {
     res
       .writeHead(200, { "content-type": "text/plain; charset=utf-8" })
-      .end("Azhou native sticker MCP v2.4 is running.");
+      .end("Azhou native sticker MCP v2.5 is running.");
     return;
   }
 
@@ -303,5 +303,5 @@ const httpServer = createServer(async (req, res) => {
 });
 
 httpServer.listen(port, "0.0.0.0", () => {
-  console.log(`Azhou native sticker MCP v2.4 listening on port ${port}`);
+  console.log(`Azhou native sticker MCP v2.5 listening on port ${port}`);
 });
