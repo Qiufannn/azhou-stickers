@@ -4,10 +4,20 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { registerAppResource, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { z } from "zod";
 
 const ROOT = fileURLToPath(new URL(".", import.meta.url));
 const stickers = JSON.parse(readFileSync(join(ROOT, "stickers.json"), "utf8"));
+const LEGACY_RESOURCE_URIS = ["ui://stickers/widget-v2.html", "ui://stickers/widget-v3.html"];
+const LEGACY_RESOURCE_META = {
+  ui: { prefersBorder: false },
+  "openai/widgetPrefersBorder": false
+};
+const legacyWidgetHtml = `<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>html,body{margin:0;background:transparent;color:#6d8492;font:13px/1.5 system-ui,sans-serif}body{padding:8px 12px}</style></head>
+<body>旧版表情卡片已停用；新表情包会直接显示在聊天中。</body></html>`;
 
 async function fetchStickerImage(imageUrl) {
   const response = await fetch(imageUrl, { signal: AbortSignal.timeout(15000) });
@@ -20,6 +30,20 @@ async function fetchStickerImage(imageUrl) {
 
 function makeServer() {
   const server = new McpServer({ name: "azhou-stickers", version: "1.1.0" });
+
+  for (const [index, uri] of LEGACY_RESOURCE_URIS.entries()) {
+    registerAppResource(server, `legacy-sticker-widget-${index + 2}`, uri, {
+      description: "Compatibility view for older sticker messages.",
+      _meta: LEGACY_RESOURCE_META
+    }, async () => ({
+      contents: [{
+        uri,
+        mimeType: RESOURCE_MIME_TYPE,
+        text: legacyWidgetHtml,
+        _meta: LEGACY_RESOURCE_META
+      }]
+    }));
+  }
 
   const stickerSchema = z.object({
     id: z.string(),
