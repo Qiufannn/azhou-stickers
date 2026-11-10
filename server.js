@@ -9,7 +9,8 @@ import { z } from "zod";
 
 const ROOT = fileURLToPath(new URL(".", import.meta.url));
 const STICKERS = JSON.parse(readFileSync(join(ROOT, "stickers.json"), "utf8"));
-const STICKER_WIDGET_HTML = readFileSync(join(ROOT, "sticker-widget-v3.html"), "utf8");
+const STICKER_WIDGET_HTML = readFileSync(join(ROOT, "sticker-widget-v4.html"), "utf8");
+const STICKER_WIDGET_URI = "ui://sticker/v4.html";
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "https://azhou-stickers.onrender.com").replace(/\/$/, "");
 const STICKER_BY_ID = new Map(STICKERS.map((sticker) => [sticker.id, sticker]));
 const IMAGE_CACHE = new Map();
@@ -110,40 +111,42 @@ async function loadNativeImage(sticker) {
 
 function createStickerServer() {
   const server = new McpServer(
-    { name: "azhou-native-stickers", version: "2.6.0" },
+    { name: "azhou-native-stickers", version: "2.6.1" },
     {
       instructions:
         "Use find_azhou_stickers to search Qiufann's original sticker collection. Then call send_azhou_sticker with one returned id. The send tool renders the selected sticker through its inline MCP App UI. Do not add a markdown image URL or replace the sticker with a generated image."
     }
   );
 
-  registerAppResource(
-    server,
-    "sticker-widget",
-    "ui://sticker/v3.html",
-    {},
-    async () => ({
-      contents: [
-        {
-          uri: "ui://sticker/v3.html",
-          mimeType: RESOURCE_MIME_TYPE,
-          text: STICKER_WIDGET_HTML,
-          _meta: {
-            ui: {
-              prefersBorder: false,
-              csp: {
-                resourceDomains: [PUBLIC_BASE_URL]
+  for (const uri of [STICKER_WIDGET_URI, "ui://sticker/v3.html"]) {
+    registerAppResource(
+      server,
+      "sticker-widget",
+      uri,
+      {},
+      async () => ({
+        contents: [
+          {
+            uri,
+            mimeType: RESOURCE_MIME_TYPE,
+            text: STICKER_WIDGET_HTML,
+            _meta: {
+              ui: {
+                prefersBorder: false,
+                csp: {
+                  resourceDomains: [PUBLIC_BASE_URL]
+                }
+              },
+              "openai/widgetDescription": "A compact sticker image shown inline in the conversation.",
+              "openai/ui": {
+                availableDisplayModes: ["inline"]
               }
-            },
-            "openai/widgetDescription": "A compact sticker image shown inline in the conversation.",
-            "openai/ui": {
-              availableDisplayModes: ["inline"]
             }
           }
-        }
-      ]
-    })
-  );
+        ]
+      })
+    );
+  }
 
   server.registerTool(
     "find_azhou_stickers",
@@ -187,8 +190,8 @@ function createStickerServer() {
         openWorldHint: false
       },
       _meta: {
-        ui: { resourceUri: "ui://sticker/v3.html" },
-        "openai/outputTemplate": "ui://sticker/v3.html",
+        ui: { resourceUri: STICKER_WIDGET_URI },
+        "openai/outputTemplate": STICKER_WIDGET_URI,
         "openai/toolInvocation/invoking": "挑表情包…",
         "openai/toolInvocation/invoked": "表情包来啦"
       }
@@ -258,7 +261,7 @@ const httpServer = createServer(async (req, res) => {
   if (req.method === "GET" && url.pathname === "/") {
     res
       .writeHead(200, { "content-type": "text/plain; charset=utf-8" })
-      .end("Azhou native sticker MCP v2.6 is running.");
+      .end("Azhou sticker MCP v2.6.1 is running.");
     return;
   }
 
@@ -306,5 +309,5 @@ const httpServer = createServer(async (req, res) => {
 });
 
 httpServer.listen(port, "0.0.0.0", () => {
-  console.log(`Azhou native sticker MCP v2.6 listening on port ${port}`);
+  console.log(`Azhou sticker MCP v2.6.1 listening on port ${port}`);
 });

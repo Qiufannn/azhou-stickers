@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      overflow: hidden;
+    }
+    #sticker {
+      display: block;
+      width: min(168px, 46vw);
+      height: auto;
+      max-height: 220px;
+      object-fit: contain;
+      border: 0;
+      border-radius: 12px;
+      background: transparent;
+    }
+    #sticker[hidden] { display: none; }
+    #error { margin: 0; font: 14px/1.4 system-ui, sans-serif; }
+  </style>
+</head>
+<body>
+  <img id="sticker" alt="" hidden />
+  <p id="error" role="status" hidden>贴图暂时加载失败</p>
+
+  <script>
+    const img = document.getElementById("sticker");
+    const error = document.getElementById("error");
+    const initializeId = 1;
+    let bridgeReady = false;
+    let currentImageUrl;
+
+    function notify(method, params) {
+      window.parent.postMessage({ jsonrpc: "2.0", method, params }, "*");
+    }
+
+    function reportHeight() {
+      const height = Math.max(1, document.body.offsetHeight);
+      if (bridgeReady) notify("ui/notifications/size-changed", { height });
+      else window.openai?.notifyIntrinsicHeight?.(height);
+    }
+
+    img.onload = () => {
+      img.hidden = false;
+      error.hidden = true;
+      reportHeight();
+    };
+
+    img.onerror = () => {
+      img.hidden = true;
+      error.hidden = false;
+      reportHeight();
+    };
+
+    function render(output) {
+      if (!output?.imageUrl || output.imageUrl === currentImageUrl) return;
+      currentImageUrl = output.imageUrl;
+      img.hidden = true;
+      error.hidden = true;
+      img.alt = output.name || "表情包";
+      img.src = output.imageUrl;
+    }
+
+    window.addEventListener("message", (event) => {
+      const message = event.data;
+      if (event.source !== window.parent || message?.jsonrpc !== "2.0") return;
+
+      if (!bridgeReady && message.id === initializeId && message.result) {
+        bridgeReady = true;
+        notify("ui/notifications/initialized", {});
+        if (!img.hidden || !error.hidden) reportHeight();
+      }
+      if (message.method === "ui/notifications/tool-result") {
+        render(message.params?.structuredContent);
+      }
+    });
+
+    if (window.parent !== window) {
+      window.parent.postMessage({
+        jsonrpc: "2.0",
+        id: initializeId,
+        method: "ui/initialize",
+        params: {
+          appInfo: { name: "azhou-sticker-widget", version: "4.0.0" },
+          appCapabilities: {},
+          protocolVersion: "2026-01-26"
+        }
+      }, "*");
+    }
+
+    // Keep compatibility with hosts that still expose the legacy bridge.
+    render(window.openai?.toolOutput);
+    window.addEventListener("openai:set_globals", (event) => {
+      render(event?.detail?.globals?.toolOutput);
+    }, { passive: true });
+  </script>
+</body>
+</html>
