@@ -109,10 +109,10 @@ async function loadNativeImage(sticker) {
 
 function createStickerServer() {
   const server = new McpServer(
-    { name: "azhou-native-stickers", version: "2.7.0" },
+    { name: "azhou-native-stickers", version: "2.7.1" },
     {
       instructions:
-        "Use find_azhou_stickers to search Qiufann's original sticker collection. Then call send_azhou_sticker with one returned id. The send tool returns the original sticker as native MCP image content. Do not add a markdown image URL or replace the sticker with a generated image."
+        "Use find_azhou_stickers to search Qiufann's original sticker collection. Then call send_azhou_sticker_image with one returned id. The native send tool returns the original sticker as MCP image content. Do not add a markdown image URL or replace the sticker with a generated image."
     }
   );
 
@@ -189,6 +189,55 @@ function createStickerServer() {
     }
   );
 
+
+  server.registerTool(
+    "send_azhou_sticker_image",
+    {
+      title: "发送阿昼的原生表情包图片",
+      description:
+        "把 find_azhou_stickers 返回的表情包作为原生图片直接显示在聊天里；不使用卡片或 iframe。",
+      inputSchema: z.object({
+        id: z.string().regex(/^\\d{3}$/).describe("搜索结果中的三位表情包编号")
+      }),
+      outputSchema: sendOutputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: false
+      }
+    },
+    async ({ id }) => {
+      const sticker = STICKER_BY_ID.get(id);
+      if (!sticker) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `没有编号为 ${id} 的表情包，请重新搜索。` }]
+        };
+      }
+
+      try {
+        const image = await loadNativeImage(sticker);
+        return {
+          content: [
+            image,
+            { type: "text", text: `贴图：${sticker.name}` }
+          ],
+          structuredContent: {
+            id: sticker.id,
+            name: sticker.name,
+            imageUrl: `${PUBLIC_BASE_URL}/sticker/${sticker.id}`
+          }
+        };
+      } catch (error) {
+        console.error(`Failed to send native sticker ${sticker.id}:`, error);
+        return {
+          isError: true,
+          content: [{ type: "text", text: "表情包原图暂时读取失败，请稍后再试。" }]
+        };
+      }
+    }
+  );
+
   return server;
 }
 
@@ -231,7 +280,7 @@ const httpServer = createServer(async (req, res) => {
   if (req.method === "GET" && url.pathname === "/") {
     res
       .writeHead(200, { "content-type": "text/plain; charset=utf-8" })
-      .end("Azhou sticker MCP v2.7.0 is running.");
+      .end("Azhou sticker MCP v2.7.1 is running.");
     return;
   }
 
@@ -279,5 +328,5 @@ const httpServer = createServer(async (req, res) => {
 });
 
 httpServer.listen(port, "0.0.0.0", () => {
-  console.log(`Azhou sticker MCP v2.7.0 listening on port ${port}`);
+  console.log(`Azhou sticker MCP v2.7.1 listening on port ${port}`);
 });
