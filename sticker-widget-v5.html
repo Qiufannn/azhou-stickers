@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 124px;
+      min-width: 124px;
+      max-width: 124px;
+      min-height: 1px;
+      background: transparent !important;
+      overflow: hidden;
+    }
+    #sticker {
+      display: block;
+      width: 124px;
+      height: 124px;
+      object-fit: contain;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+    }
+    #sticker[hidden], #error[hidden] { display: none; }
+    #error {
+      width: 124px;
+      margin: 0;
+      padding: 8px;
+      color: #6d8492;
+      font: 12px/1.35 system-ui, sans-serif;
+      text-align: center;
+      background: transparent;
+    }
+  </style>
+</head>
+<body>
+  <img id="sticker" alt="" hidden />
+  <p id="error" role="status" hidden>小兔暂时没钻出来</p>
+  <script>
+    const img = document.getElementById("sticker");
+    const error = document.getElementById("error");
+    const initializeId = 1;
+    let bridgeReady = false;
+    let currentImageUrl = "";
+
+    function notify(method, params) {
+      window.parent.postMessage({ jsonrpc: "2.0", method, params }, "*");
+    }
+
+    function reportSize() {
+      const height = Math.max(1, Math.ceil(document.body.getBoundingClientRect().height));
+      if (bridgeReady) notify("ui/notifications/size-changed", { width: 124, height });
+      window.openai?.notifyIntrinsicHeight?.(height);
+    }
+
+    function render(output) {
+      if (!output?.imageUrl || output.imageUrl === currentImageUrl) return;
+      currentImageUrl = output.imageUrl;
+      img.hidden = true;
+      error.hidden = true;
+      img.alt = output.name || "阿昼的表情包";
+      img.src = output.imageUrl;
+    }
+
+    img.addEventListener("load", () => {
+      img.hidden = false;
+      error.hidden = true;
+      reportSize();
+    });
+    img.addEventListener("error", () => {
+      img.hidden = true;
+      error.hidden = false;
+      reportSize();
+    });
+
+    window.addEventListener("message", (event) => {
+      const message = event.data;
+      if (event.source !== window.parent || message?.jsonrpc !== "2.0") return;
+      if (!bridgeReady && message.id === initializeId && message.result) {
+        bridgeReady = true;
+        notify("ui/notifications/initialized", {});
+        reportSize();
+      }
+      if (message.method === "ui/notifications/tool-result") {
+        render(message.params?.structuredContent);
+      }
+    });
+
+    if (window.parent !== window) {
+      window.parent.postMessage({
+        jsonrpc: "2.0",
+        id: initializeId,
+        method: "ui/initialize",
+        params: {
+          appInfo: { name: "azhou-sticker-widget", version: "5.0.0" },
+          appCapabilities: {},
+          protocolVersion: "2026-01-26"
+        }
+      }, "*");
+    }
+
+    render(window.openai?.toolOutput);
+    window.addEventListener("openai:set_globals", (event) => {
+      render(event?.detail?.globals?.toolOutput);
+    }, { passive: true });
+  </script>
+</body>
+</html>
